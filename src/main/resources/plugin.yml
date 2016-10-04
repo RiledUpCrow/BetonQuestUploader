@@ -1,0 +1,19 @@
+name: BetonQuestUploader
+main: pl.betoncraft.betonquestuploader.Receiver
+description: Handles uploading a quest package over the internet
+authors: [Co0sh]
+version: 0.1.0
+commands:
+  bqureload:
+    description: Reloads the configuration
+    usage: /<command>
+    permission: bqu.reload
+  bquadd:
+    description: Adds a user to the configuration.
+    usage: /<command>
+    permission: bqu.add
+permissions:
+  bqu.reload:
+    default: op
+  bqu.add:
+    default: op
