@@ -236,19 +236,15 @@ public class Receiver extends JavaPlugin implements CommandExecutor {
 		Enumeration<? extends ZipEntry> entries = zip.entries();
 		ZipEntry entry;
 		while (entries.hasMoreElements() && (entry = entries.nextElement()) != null) {
-			if (!entry.getName().endsWith(".yml")) {
+			String entryName = entry.getName().replace('\\', '/');
+			if (!entryName.endsWith(".yml")) {
 				continue;
 			}
-			int first = entry.getName().indexOf('\\');
-			if (first < 0) {
-				first = entry.getName().indexOf('/');
-			}
-			int last = entry.getName().lastIndexOf('\\');
-			if (last < 0) {
-				last = entry.getName().lastIndexOf('/');
-			}
-            String filePath = oldPack.getPath() + File.separator + entry.getName().substring(first + 1);
-            String dirPath = oldPack.getPath() + File.separator + entry.getName().substring(first + 1, last + 1);
+			int first = entryName.indexOf('/');
+			int last = entryName.lastIndexOf('/');
+            String filePath = oldPack.getPath() + File.separator + entryName.substring(first + 1);
+            String dirPath = first == last ? "" : 
+            		oldPack.getPath() + File.separator + entryName.substring(first + 1, last);
             File packDir = new File(dirPath);
             packDir.mkdirs();
             if (!entry.isDirectory()) {
