@@ -26,6 +26,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.util.Arrays;
 import java.util.Enumeration;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Random;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -35,6 +37,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -152,14 +155,17 @@ public class Receiver extends JavaPlugin implements CommandExecutor {
 		// reading
 		InputStream stream = exchange.getRequestBody();
 		String type = null;
+		byte[] bytes = new byte[1024*1024];
 		while (true) {
-			byte[] bytes = new byte[1024*1024];
 			int b;
 			int length = 0;
 			while ((b = stream.read()) != -1) {
 				bytes[length] = (byte) b;
 				length++;
 				if (b == '\n') {
+					break;
+				}
+				if (length == bytes.length) {
 					break;
 				}
 			}
@@ -222,49 +228,63 @@ public class Receiver extends JavaPlugin implements CommandExecutor {
 		if (!pass.equals(password)) {
 			return false;
 		}
-		String pack = getConfig().getString("users." + user + ".package");
-		if (pack == null) {
+		String playerPackName = getConfig().getString("users." + user + ".package");
+		if (playerPackName == null) {
 			return false;
 		}
 		ZipFile zip = new ZipFile(file);
 		File betonDir = new File(getDataFolder().getParentFile(), "BetonQuest");
-		File oldPack = new File(betonDir, pack);
-		if (oldPack.exists()) {
-			deleteFiles(oldPack);
+		File playerPackDir = new File(betonDir, playerPackName);
+		if (playerPackDir.exists()) {
+			deleteFiles(playerPackDir);
 		}
-		oldPack.mkdir();
+		playerPackDir.mkdir();
+        List<String> updated = new LinkedList<>(); // holds package names from this zip
 		Enumeration<? extends ZipEntry> entries = zip.entries();
 		ZipEntry entry;
 		while (entries.hasMoreElements() && (entry = entries.nextElement()) != null) {
+			// don't create directories, they will be created anyway
+			if (entry.isDirectory()) {
+				continue;
+			}
 			String entryName = entry.getName().replace('\\', File.separatorChar).replace('/', File.separatorChar);
 			if (!entryName.endsWith(".yml")) {
 				continue;
 			}
-			int first = entryName.indexOf(File.separatorChar);
-			int last = entryName.lastIndexOf(File.separatorChar);
-            String filePath = oldPack.getPath() + File.separatorChar + entryName.substring(first + 1);
-            String dirPath = first == last ? "" : 
-            		oldPack.getPath() + File.separatorChar + entryName.substring(first + 1, last);
+			String entryPath = entryName.startsWith(playerPackName + File.separatorChar) ? entryName.substring(playerPackName.length() + 1) : entryName;
+			String filePath = playerPackDir.getPath() + File.separatorChar + entryPath;
+            String packPath = entryPath.substring(0, entryPath.lastIndexOf(File.separatorChar));
+            String dirPath = playerPackDir.getPath() + File.separatorChar + packPath;
+            // package name ready to add to BetonQuest's config.yml
+            String packAddress = playerPackName + "-" + packPath.replace(File.separatorChar + "conversations", "").replace(File.separatorChar, '-');
             File packDir = new File(dirPath);
             packDir.mkdirs();
-            if (!entry.isDirectory()) {
-            	BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(filePath));
-                byte[] bytesIn = new byte[1024];
-                int read = 0;
-                InputStream in = zip.getInputStream(entry);
-                while ((read = in.read(bytesIn)) != -1) {
-                    bos.write(bytesIn, 0, read);
-                }
-                bos.close();
-                in.close();
-            } else {
-                // if the entry is a directory, make the directory
-                File dir = new File(filePath);
-                dir.mkdirs();
+        	BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(filePath));
+            byte[] bytesIn = new byte[1024];
+            int read = 0;
+            InputStream in = zip.getInputStream(entry);
+            while ((read = in.read(bytesIn)) != -1) {
+                bos.write(bytesIn, 0, read);
+            }
+            bos.close();
+            in.close();
+            if (!updated.contains(packAddress)) {
+            	updated.add(packAddress);
             }
         }
 		zip.close();
 		file.delete();
+        Plugin betonQuest = Bukkit.getPluginManager().getPlugin("BetonQuest");
+        if (betonQuest != null) {
+        	List<String> packages = betonQuest.getConfig().getStringList("packages");
+        	for (String p : packages) {
+        		if (!p.startsWith(playerPackName + "-")) {
+        			updated.add(p);
+        		}
+        	}
+        }
+        betonQuest.getConfig().set("packages", updated);
+        betonQuest.saveConfig();
 		getLogger().info(user + " uploaded his package.");
 		Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "betonquest reload");
 		return true;
